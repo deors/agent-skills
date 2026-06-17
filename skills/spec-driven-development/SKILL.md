@@ -79,6 +79,8 @@ Don't silently fill in ambiguous requirements. The spec's entire purpose is to s
    - **Ask first:** Database schema changes, adding dependencies, changing CI config
    - **Never do:** Commit secrets, edit vendor directories, remove failing tests without approval
 
+**Spec file location:** Save every spec as `specs/NNN-<slug>.md` where `NNN` is a zero-padded three-digit sequence number (001, 002, …) reflecting the order specs were created, and `<slug>` is a short kebab-case description of the feature or project. Example: `specs/001-cold-path-ingestion.md`. Never save specs as `SPEC.md` at the project root — multiple specs will accumulate over the life of a project and a single root file does not scale.
+
 **Spec template:**
 
 ```markdown
@@ -162,14 +164,30 @@ Break the plan into discrete, implementable tasks:
 
 Execute tasks one at a time following `skills/incremental-implementation/SKILL.md` (`incremental-implementation`) and `skills/test-driven-development/SKILL.md` (`test-driven-development`). Use `skills/context-engineering/SKILL.md` (`context-engineering`) to load the right spec sections and source files at each step rather than flooding the agent with the entire spec.
 
+## Version Control
+
+Spec and task definition work lives on its own branch so teammates can review it before a single line of implementation code is written.
+
+**Branch naming:** `feature/spec-NNN-slug` where `NNN` matches the spec file's numeric prefix and `slug` matches its kebab-case name. Example: `feature/spec-001-cold-path-ingestion`.
+
+**Workflow:**
+
+1. Check out a new `feature/spec-NNN-slug` branch before creating any spec or task files.
+2. Commit the spec (`specs/NNN-slug.md`) to this branch.
+3. Run `/plan` on the same branch — commit all planning artifacts (`tasks/NNN-slug/plan.md`, `tasks/NNN-slug/todo.md`, `tasks/NNN-slug/NNN-NN-*.md`) to the same branch.
+4. Open a PR from `feature/spec-NNN-slug` → main for peer review.
+5. **Do not start implementation until the PR is approved and merged.** Implementation branches (`feature/task-NNN-NN-slug`) are cut from main after the spec branch lands.
+
+This gives the whole team a single checkpoint to catch scope, architecture, and dependency issues before any work is sunk into code.
+
 ## Keeping the Spec Alive
 
 The spec is a living document, not a one-time artifact:
 
 - **Update when decisions change** — If you discover the data model needs to change, update the spec first, then implement.
 - **Update when scope changes** — Features added or cut should be reflected in the spec.
-- **Commit the spec** — The spec belongs in version control alongside the code.
-- **Reference the spec in PRs** — Link back to the spec section that each PR implements.
+- **Keep the spec on its branch** — All spec and task edits before merge belong on `feature/spec-NNN-slug`; post-merge edits go on a new `feature/spec-NNN-slug-v2` branch and follow the same PR process.
+- **Reference the spec in implementation PRs** — Link back to the spec section that each task PR implements.
 
 ## Common Rationalizations
 
@@ -188,13 +206,19 @@ The spec is a living document, not a one-time artifact:
 - Implementing features not mentioned in any spec or task list
 - Making architectural decisions without documenting them
 - Skipping the spec because "it's obvious what to build"
+- Writing the spec directly on main instead of on a `feature/spec-NNN-slug` branch
+- Starting implementation before the spec branch PR is approved and merged
 
 ## Verification
 
 Before proceeding to implementation, confirm:
 
+- [ ] A `feature/spec-NNN-slug` branch has been created and checked out
+- [ ] The spec is saved to `specs/NNN-slug.md` on that branch
 - [ ] The spec covers all six core areas
 - [ ] The human has reviewed and approved the spec
 - [ ] Success criteria are specific and testable
 - [ ] Boundaries (Always/Ask First/Never) are defined
-- [ ] The spec is saved to a file in the repository
+- [ ] All planning artifacts are committed to the same `feature/spec-NNN-slug` branch
+- [ ] A PR from `feature/spec-NNN-slug` → main is open for peer review
+- [ ] Implementation has not started until the PR is approved and merged
