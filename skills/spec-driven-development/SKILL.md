@@ -60,14 +60,14 @@ Don't silently fill in ambiguous requirements. The spec's entire purpose is to s
    Dev: npm run dev
    ```
 
-3. **Project Structure** — Where source code lives, where tests go, where docs belong.
+3. **Project Structure** — Where source code lives, where tests go, where docs belong. Use tree characters (`├──`, `└──`, `│`) to show hierarchy clearly.
    ```
-   src/           → Application source code
-   src/components → React components
-   src/lib        → Shared utilities
-   tests/         → Unit and integration tests
-   e2e/           → End-to-end tests
-   docs/          → Documentation
+   src/
+   ├── components/    → React components
+   └── lib/           → Shared utilities
+   tests/             → Unit and integration tests
+   e2e/               → End-to-end tests
+   docs/              → Documentation
    ```
 
 4. **Code Style** — One real code snippet showing your style beats three paragraphs describing it. Include naming conventions, formatting rules, and examples of good output.
@@ -78,6 +78,8 @@ Don't silently fill in ambiguous requirements. The spec's entire purpose is to s
    - **Always do:** Run tests before commits, follow naming conventions, validate inputs
    - **Ask first:** Database schema changes, adding dependencies, changing CI config
    - **Never do:** Commit secrets, edit vendor directories, remove failing tests without approval
+
+**Spec storage:** Create a GitHub issue with title `spec: <slug>` and the full spec as the body using `gh issue create`. The issue number becomes the canonical identifier for this spec — capture it from the returned URL and zero-pad it to five digits for use in branch names (e.g. issue #42 → `00042`).
 
 **Spec template:**
 
@@ -94,7 +96,7 @@ Don't silently fill in ambiguous requirements. The spec's entire purpose is to s
 [Build, test, lint, dev — full commands]
 
 ## Project Structure
-[Directory layout with descriptions]
+[Directory tree using ├──, └──, │ characters with inline descriptions]
 
 ## Code Style
 [Example snippet + key conventions]
@@ -151,6 +153,7 @@ Break the plan into discrete, implementable tasks:
 - No task should require changing more than ~5 files
 
 **Task template:**
+
 ```markdown
 - [ ] Task: [Description]
   - Acceptance: [What must be true when done]
@@ -162,14 +165,26 @@ Break the plan into discrete, implementable tasks:
 
 Execute tasks one at a time following `skills/incremental-implementation/SKILL.md` (`incremental-implementation`) and `skills/test-driven-development/SKILL.md` (`test-driven-development`). Use `skills/context-engineering/SKILL.md` (`context-engineering`) to load the right spec sections and source files at each step rather than flooding the agent with the entire spec.
 
+## Version Control
+
+The spec lives in a GitHub issue — no spec branch is needed. The issue itself is the reviewable and linkable artifact.
+
+**Workflow:**
+
+1. Create the spec GitHub issue using `gh issue create --title "spec: <slug>" --body "<spec-markdown>"`. Capture the issue number.
+2. Share the issue URL with teammates for review — no PR is needed for the spec itself.
+3. After the spec is reviewed and approved, run `/plan <spec-issue-number>`. This posts the plan as a comment on the spec issue and creates one GitHub issue per task, each linked back to the spec.
+4. **Do not start implementation until the spec issue and task list are approved.** Implementation branches (`feature/<NNNNN>-task-slug`) are cut from main per task.
+
+This gives the whole team a single checkpoint to catch scope, architecture, and dependency issues before any work is sunk into code.
+
 ## Keeping the Spec Alive
 
-The spec is a living document, not a one-time artifact:
+The spec issue is a living artifact, not a one-time record:
 
-- **Update when decisions change** — If you discover the data model needs to change, update the spec first, then implement.
-- **Update when scope changes** — Features added or cut should be reflected in the spec.
-- **Commit the spec** — The spec belongs in version control alongside the code.
-- **Reference the spec in PRs** — Link back to the spec section that each PR implements.
+- **Update when decisions change** — If you discover the data model needs to change, update the spec issue body or add a comment, then implement.
+- **Update when scope changes** — Features added or cut should be reflected in the spec issue.
+- **Reference the spec in implementation PRs** — Link back to the spec issue (`#<N>`) in each task PR description.
 
 ## Common Rationalizations
 
@@ -188,13 +203,17 @@ The spec is a living document, not a one-time artifact:
 - Implementing features not mentioned in any spec or task list
 - Making architectural decisions without documenting them
 - Skipping the spec because "it's obvious what to build"
+- Starting implementation before the spec issue has been reviewed and task issues exist
 
 ## Verification
 
 Before proceeding to implementation, confirm:
 
+- [ ] A spec GitHub issue has been created with title `spec: <slug>`
+- [ ] The issue number has been captured and zero-padded to five digits
 - [ ] The spec covers all six core areas
-- [ ] The human has reviewed and approved the spec
+- [ ] The human has reviewed and approved the spec issue
 - [ ] Success criteria are specific and testable
 - [ ] Boundaries (Always/Ask First/Never) are defined
-- [ ] The spec is saved to a file in the repository
+- [ ] `/plan <issue-number>` has been run and task issues have been created
+- [ ] Implementation has not started until the spec issue and task list are approved

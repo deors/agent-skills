@@ -1,72 +1,93 @@
 ---
-description: Run the pre-launch checklist via parallel fan-out to specialist personas, then synthesize a go/no-go decision
+description: Assess production readiness of a release candidate — runbooks, observability, and security monitoring. Does not deploy code; deployment is done exclusively by CD workflows.
 ---
 
-Invoke the agent-skills:shipping-and-launch skill.
+Invoke the agent-skills:shipping-and-launch skill alongside agent-skills:observability-and-instrumentation and agent-skills:security-and-hardening.
 
-`/ship` is a **fan-out orchestrator**. It runs three specialist personas in parallel against the current change, then merges their reports into a single go/no-go decision with a rollback plan. The personas operate independently — no shared state, no ordering — which is what makes parallel execution safe and useful here.
+## What this command does — and does not do
+
+`/ship` **does not deploy code.** Deployment to any environment is done exclusively through CD workflows triggered by CI after a merge. This command exists to ensure the team is ready to support and operate the change once it is live.
+
+Run `/ship` when a release candidate artifact has been produced by CI and validated in staging (steps 15–19 of the lifecycle), before the PM/PO makes the production deployment decision (step 20).
+
+## Resolving the release context
+
+`$ARGUMENTS` may be a spec issue number, a PR number, or a release tag. Use it to scope what is being assessed.
+
+1. Run `gh issue view <spec-N> --json title,body` to load the spec and understand the intended behavior.
+2. Run `gh pr list --search "Spec: #<spec-N>" --state merged --json number,title` to list all merged PRs in this release.
+3. Confirm the artifact has been deployed to staging and CT results are available before proceeding. If staging validation has not run, stop and tell the engineer to wait for it.
 
 ## Phase A — Parallel fan-out
 
-Spawn three subagents concurrently using the Agent tool. **Issue all three Agent tool calls in a single assistant turn so they execute in parallel** — sequential calls defeat the purpose of this command.
+Spawn three subagents concurrently using the Agent tool. Issue all three calls in a single assistant turn.
 
-In Claude Code, each call passes `subagent_type` matching the persona's `name` field:
+1. **`observability-auditor`** (use `agent-skills:observability-and-instrumentation`):
+   - Are structured logs emitted for the new behavior? Are they queryable?
+   - Are RED metrics (Rate, Errors, Duration) instrumented for every new service path?
+   - Are distributed traces configured end-to-end?
+   - Are dashboards created or updated to surface the new behavior?
+   - Are symptom-based alerts defined? Do they have runbook links?
 
-1. **`code-reviewer`** — Run a five-axis review (correctness, readability, architecture, security, performance) on the staged changes or recent commits. Output the standard review template.
-2. **`security-auditor`** — Run a vulnerability and threat-model pass. Check OWASP Top 10, secrets handling, auth/authz, dependency CVEs. Output the standard audit report.
-3. **`test-engineer`** — Analyze test coverage for the change. Identify gaps in happy path, edge cases, error paths, and concurrency scenarios. Output the standard coverage analysis.
+2. **`security-auditor`** (use the `security-auditor` persona):
+   - Is runtime security monitoring configured for the new attack surface?
+   - Are secrets rotated if the change touched credential handling?
+   - Are access controls verified in the staging environment?
+   - Are dependency CVEs re-checked against the release artifact?
+   - Are audit logs enabled for any new sensitive operations?
 
-In other harnesses without an Agent tool, invoke each persona's system prompt sequentially and treat their outputs as if returned in parallel — the merge phase still works.
+3. **`operations-auditor`** (use `agent-skills:documentation-and-adrs`):
+   - Does a runbook exist for operating and troubleshooting this change in production?
+   - Are rollback procedures documented with exact steps and trigger conditions?
+   - Are environment-specific configuration differences documented?
+   - Are any manual pre- or post-deployment steps identified and assigned?
+   - Are feature flags (if used) documented with their expected lifecycle and removal date?
 
-Constraints (from Claude Code's subagent model):
-- Subagents cannot spawn other subagents — do not let one persona delegate to another.
-- Each subagent gets its own context window and returns only its report to this main session.
-- If you need teammates that talk to each other instead of just reporting back, use Claude Code Agent Teams and reference these personas as teammate types (see `references/orchestration-patterns.md`).
+## Phase B — Synthesis
 
-**Persona resolution.** If you've defined your own `code-reviewer`, `security-auditor`, or `test-engineer` in `.claude/agents/` or `~/.claude/agents/`, those take precedence over this plugin's versions — `/ship` picks up your customizations automatically. This is intentional: plugin subagents sit at the bottom of Claude Code's scope priority table, so user-level definitions win by design.
-
-## Phase B — Merge in main context
-
-Once all three reports are back, the main agent (not a sub-persona) synthesizes them:
-
-1. **Code Quality** — Aggregate Critical/Important findings from `code-reviewer` and any failing tests, lint, or build output. Resolve duplicates between reviewers.
-2. **Security** — Promote any Critical/High `security-auditor` findings to launch blockers. Cross-reference with `code-reviewer`'s security axis.
-3. **Performance** — Pull from `code-reviewer`'s performance axis; cross-check Core Web Vitals if applicable.
-4. **Accessibility** — Verify keyboard nav, screen reader support, contrast (not covered by the three personas — handle directly here, or invoke the accessibility checklist).
-5. **Infrastructure** — Env vars, migrations, monitoring, feature flags. Verify directly.
-6. **Documentation** — README, ADRs, changelog. Verify directly.
-
-## Phase C — Decision and rollback
-
-Produce a single output:
+Once all three reports are back, synthesize them into a production readiness report:
 
 ```markdown
-## Ship Decision: GO | NO-GO
+## Production Readiness Report
 
-### Blockers (must fix before ship)
-- [Source persona: Critical finding + file:line]
+**Release:** [spec title / release tag]
+**Staging validation:** [CT results summary — passed / failed / partial]
 
-### Recommended fixes (should fix before ship)
-- [Source persona: Important finding + file:line]
+### Readiness verdict: READY | NOT READY
 
-### Acknowledged risks (shipping anyway)
-- [Risk + mitigation]
+### Blockers (must resolve before production deployment)
+- [Source: finding + action required]
 
-### Rollback plan
-- Trigger conditions: [what signals would prompt rollback]
+### Recommended actions (resolve before or immediately after deployment)
+- [Source: finding + action required]
+
+### Runbook
+- Location: [link or file path]
+- Rollback trigger: [conditions that would prompt rollback]
 - Rollback procedure: [exact steps]
 - Recovery time objective: [target]
 
-### Specialist reports (full)
-- [code-reviewer report]
-- [security-auditor report]
-- [test-engineer report]
+### Observability
+- Dashboards: [ready / link]
+- Alerts: [configured / not configured — details]
+- Log queries: [ready / link]
+
+### Security monitoring
+- Runtime monitoring: [configured / not configured — details]
+- Access controls verified in staging: [yes / no]
+- CVE check: [clean / findings]
+
+### Operations checklist
+- [ ] Runbook created or updated
+- [ ] Rollback steps verified in staging
+- [ ] Feature flags documented (if applicable)
+- [ ] On-call team notified
 ```
 
 ## Rules
 
-1. The three Phase A personas run in parallel — never sequentially.
-2. Personas do not call each other. The main agent merges in Phase B.
-3. The rollback plan is mandatory before any GO decision.
-4. If any persona returns a Critical finding, the default verdict is NO-GO unless the user explicitly accepts the risk.
-5. **Skip the fan-out only if all of the following are true:** the change touches 2 files or fewer, the diff is under 50 lines, and it does not touch auth, payments, data access, or config/env. Otherwise, default to fan-out. `/ship` is designed for production-bound changes — when the blast radius is non-trivial, run the parallel review even if the diff looks small.
+1. Do not run this command before staging validation (CT) has completed. Staging is the last gate before production — it must pass.
+2. The three Phase A subagents run in parallel — never sequentially.
+3. A NOT READY verdict blocks the PM/PO production deployment decision. The team must resolve blockers and re-run `/ship` before proceeding.
+4. Runbook creation is mandatory, not optional. If a runbook does not exist, create it as part of this command.
+5. This command produces a readiness report — the PM/PO uses it to decide when to trigger the CD workflow for production. The command never triggers that workflow itself.

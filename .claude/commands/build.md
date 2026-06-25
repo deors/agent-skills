@@ -6,39 +6,45 @@ Invoke the agent-skills:incremental-implementation skill alongside agent-skills:
 
 ## Modes
 
-- **`/build`** — implement the *next* pending task, then stop (careful, one slice at a time).
-- **`/build auto`** — generate the plan if needed, get a single approval, then implement *every* task without stopping between them.
+- **`/build <task-issue-number>`** — implement a specific task issue, then stop.
+- **`/build auto <spec-issue-number>`** — get a single approval, then implement *every* open task for that spec without stopping between them.
+- **`/build`** — resume the task for the current branch (only valid when already on a task branch).
 
-`$ARGUMENTS` selects the mode. Treat `auto` (canonical) or `all` as autonomous mode; anything else (or empty) is the default single-task mode. Note: autonomous mode is not faster *per task* — it runs the same test-driven loop — it only removes the human stepping *between* tasks.
+`$ARGUMENTS` selects the mode:
+- A bare integer → single-task mode for that task issue.
+- `auto <N>` or `<N> auto` → autonomous mode for spec issue N.
+- Empty → resume mode: extract the task issue number from the current branch name (`feature/<NNNNN>-task-slug` → strip leading zeros). If the current branch is not a task branch, stop and ask the user to provide a task issue number.
 
 ## Default: one task
 
-Pick the next pending task from the plan. Then:
+1. Fetch the task issue: `gh issue view <task-N> --json title,body`
+2. Extract the task name from the title and the full task definition from the body
+3. Load relevant context (existing code, patterns, types)
+4. **Check out a task branch from main.** Switch to main, pull latest, then check out `feature/<NNNNN>-task-slug` where `NNNNN` is the task issue number zero-padded to five digits (e.g. `feature/00043-task-s3-lake-module`). If already on that branch (resume mode), skip this step.
+5. Write a failing test for the expected behavior (RED)
+6. Implement the minimum code to pass the test (GREEN)
+7. Run the full test suite to check for regressions
+8. Run the build to verify compilation
+9. Commit with a descriptive message.
+10. **Open a PR** from `feature/<NNNNN>-task-slug` to main. Run `gh pr create --title "task: <task-name>" --body "Closes #<task-N>\n\n<summary>"`. The issue will be automatically closed when the PR is merged. If rework is needed after review, continue on the same branch and push updates.
+11. Stop
 
-1. Read the task's acceptance criteria
-2. Load relevant context (existing code, patterns, types)
-3. Write a failing test for the expected behavior (RED)
-4. Implement the minimum code to pass the test (GREEN)
-5. Run the full test suite to check for regressions
-6. Run the build to verify compilation
-7. Commit with a descriptive message
-8. Mark the task complete and stop
+## Autonomous: the whole plan (`/build auto <spec-N>`)
 
-## Autonomous: the whole plan (`/build auto`)
+Use this once a spec has been planned and you want to build every task in one approved pass. It removes manual stepping between tasks — **not** the verification. Every task still earns a passing test, its own commit, and its own PR from its feature branch to main.
 
-Use this once a spec exists and you want to collapse plan + build into one run. It removes the manual stepping between tasks — **not** the verification. Every task still earns a passing test and its own commit.
+1. **Fetch the spec.** Run `gh issue view <spec-N> --json title,body` to confirm the spec exists.
+2. **Establish a clean baseline.** Run `git status --porcelain`. If there are uncommitted changes, stop and ask the user to commit or stash them.
+3. **List all task issues.** Run `gh issue list --search "\"Spec: #<spec-N>\"" --json number,title,state --limit 100` to see overall progress.
+4. **Require a plan.** If no task issues exist, stop and tell the user to run `/plan <spec-N>` first — do not invent requirements.
+5. **Single checkpoint.** Present the full task list (open and closed) and wait for an unambiguous affirmative (e.g. "approve", "go", "yes"). Treat hedged responses ("looks reasonable", "I guess") as **not** approved. This is the only human gate.
+6. **Execute every open task in dependency order.** For each open task issue (ordered by issue number), run the full default loop above (RED → GREEN → regression → build → commit → open PR from feature branch to main). Each task branch is cut from main. Stage only the files that task touched — never `git add -A` blindly.
+7. **Stop and ask the user** (do not push through) when:
+   - A test can't be made to pass or the build breaks without an obvious fix → follow agent-skills:debugging-and-error-recovery
+   - The spec or task is ambiguous and needs a decision not covered by the issue
+   - A task is high-risk or irreversible — auth/permission changes, destructive data migrations, payments, deletions, deploys, anything touching secrets, **or anything you can't undo with `git revert`** → follow agent-skills:doubt-driven-development and get explicit sign-off before continuing
 
-1. **Require a spec.** Look only for a spec at a known path: `SPEC.md` at the repo root, `docs/SPEC.md`, or a file under `spec/`. A README or arbitrary doc does **not** count. If none exists, stop and tell the user to run `/spec` first — do not invent requirements.
-2. **Establish a clean baseline.** Run `git status --porcelain`. If there are uncommitted changes outside the expected planning artifacts (`SPEC.md`, `docs/SPEC.md`, `spec/*`, `tasks/plan.md`, `tasks/todo.md`), stop and ask the user to commit, stash, or confirm how to handle them. Autonomous per-task commits must not absorb unrelated local work, or the clean-rollback guarantee breaks.
-3. **Plan if needed.** If there is no `tasks/plan.md`, invoke agent-skills:planning-and-task-breakdown to generate one.
-4. **Single checkpoint.** Present the full plan and wait for an unambiguous affirmative (e.g. "approve", "go", "yes"). Treat hedged responses ("looks reasonable", "I guess") as **not** approved. This is the only human gate — after approval, run autonomously. If you generated `tasks/plan.md`, commit it as a single preparatory commit now so it doesn't bleed into the first task's commit.
-5. **Execute every task in dependency order.** Use each task's declared dependencies; if they aren't explicit, execute in the order the plan lists them. For each task, run the full default loop above (RED → GREEN → regression → build → commit → mark complete). Stage only the files that task touched plus its task-status update — never `git add -A` blindly — and make one commit per task so any point is a clean rollback.
-6. **Stop and ask the user** (do not push through) when:
-   - a test can't be made to pass or the build breaks without an obvious fix → follow agent-skills:debugging-and-error-recovery
-   - the spec is ambiguous, or a task needs a decision the spec doesn't cover
-   - a task is high-risk or irreversible — auth/permission changes, destructive data migrations, payments, deletions, deploys, anything touching secrets, **or anything you can't undo with `git revert`** → follow agent-skills:doubt-driven-development and get explicit sign-off before continuing
-
-   After the user resolves a blocker, they re-invoke `/build auto` — it resumes from the next pending task.
-7. **Summarize at the end:** tasks completed, tests added, commits made, and anything skipped, flagged, or left for the user.
+   After the user resolves a blocker, they re-invoke `/build auto <spec-N>` — it resumes from the next open task issue.
+8. **Summarize at the end:** tasks completed, tests added, PRs opened, and anything skipped, flagged, or left for the user.
 
 If any step fails, follow the agent-skills:debugging-and-error-recovery skill.
