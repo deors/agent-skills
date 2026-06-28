@@ -31,6 +31,10 @@ docs/         → Setup guides for different tools
 - References are in `references/`, not inside skill directories
 - Supporting files only created when content exceeds 100 lines
 
+## Contributing
+
+Before adding a new skill or significantly reworking an existing one, run the pre-flight checks in [CONTRIBUTING.md](CONTRIBUTING.md#before-proposing-a-new-skill): search the catalog, check open PRs, confirm the idea fits [docs/skill-anatomy.md](docs/skill-anatomy.md), and justify the gap. Prefer extending an existing skill over adding a near-duplicate. CONTRIBUTING.md is the single source of truth for this workflow; do not restate its checklist here or elsewhere, link to it.
+
 ## Commands
 
 - `npm test` — Not applicable (this is a documentation project)
@@ -38,6 +42,7 @@ docs/         → Setup guides for different tools
 
 ## Boundaries
 
+- Always: Run the CONTRIBUTING.md pre-flight checks before creating a new skill directory
 - Always: Follow the skill-anatomy.md format for new skills
 - Never: Add skills that are vague advice instead of actionable processes
 - Never: Duplicate content between skills — reference other skills instead
